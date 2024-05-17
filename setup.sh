@@ -11,8 +11,9 @@ SHOULD_RESTART=false
 install_python() {
     case $OS in
       'Linux')
+        # FIXME(Ivan): Linux is not always Ubuntu, checking DISTRIB_ID is recommended here
         sudo apt update
-        sudo apt install -y python3 python3-pip
+        sudo apt install -y python3 python3-pip python3-venv
         SHOULD_RESTART=true
         ;;
       'Darwin')
@@ -57,17 +58,20 @@ if [ -z "$(command -v python3)" ]; then
   install_python
 fi
 
+if ! python3 -m pip --help > /dev/null 2>&1; then
+  echo "pip module not found. Installing..."
+  install_python
+fi
+
+if ! python3 -m venv --help > /dev/null 2>&1; then
+  echo "venv module not found. Installing..."
+  install_python
+fi
+
 # Check if Node is installed, if not then install it
 if [ -z "$(command -v node)" ]; then
   echo "Node not found. Installing Node..."
   install_node
-fi
-
-# Check if btcli is installed, if not then install it
-if [ -z "$(command -v btcli)" ]; then
-  echo "btcli not found. Installing btcli..."
-  python3 -m pip install bittensor
-  SHOULD_RESTART=true
 fi
 
 # Check if PM2 is installed, if not then install it
@@ -76,29 +80,34 @@ if [ -z "$(command -v pm2)" ]; then
   sudo npm install -g pm2
 fi
 
-
-
 # Ask user where they want to install the SN
 read -p "Where would you like to install Omron? (./omron): " INSTALL_PATH </dev/tty
 INSTALL_PATH=${INSTALL_PATH:-./omron}
 
 # Clone SN repo into user's specified directory
-git clone https://github.com/inference-labs-inc/omron-subnet.git $INSTALL_PATH
-
+if ! [ -d $INSTALL_PATH ]; then
+  git clone https://github.com/inference-labs-inc/omron-subnet.git $INSTALL_PATH
+else
+  echo "$INSTALL_PATH already exists"
+fi
 
 # Setup a Virtual Python environment for dependencies
-if ! python3 -m venv --help > /dev/null 2>&1; then
-  echo "venv module not found. Installing venv..."
-  sudo apt-get install -y python3-venv
-fi
 echo "Setting up Python virtual environment..."
-python3 -m venv $INSTALL_PATH/.venv
+if ! [ -d $INSTALL_PATH/.venv ]; then
+  python3 -m venv --prompt omron $INSTALL_PATH/.venv
+fi
 source $INSTALL_PATH/.venv/bin/activate
-
 
 # Install Python dependencies from requirements.txt
 echo "Installing Python dependencies..."
 python3 -m pip install -r $INSTALL_PATH/requirements.txt
+
+# Check if btcli is installed, if not then install it
+if [ -z "$(command -v btcli)" ]; then
+  echo "btcli not found. Installing btcli..."
+  python3 -m pip install bittensor
+  SHOULD_RESTART=true
+fi
 
 # Show completion message and prompt user to restart their terminal if necessary
 if [ "$SHOULD_RESTART" = true ]; then
@@ -115,5 +124,5 @@ echo "Downloading SRS..."
 sudo wget https://storage.omron.ai/kzg_xs.srs -O $INSTALL_PATH/neurons/deployment_layer/model_0/kzg.srs
 
 # Display next steps
-echo -e "\033[32mOmron has been installed to ${INSTALL_PATH}. Please run \`cd ${INSTALL_PATH}\` to navigate to the directory.\033[0m"
+echo -e "\033[32mOmron has been installed to ${INSTALL_PATH}. Please run \`cd ${INSTALL_PATH}\` to navigate to the directory, then run \`source .venv/bin/activate\` to activate virtual environment.\033[0m"
 echo -e "\033[32mPlease see ${INSTALL_PATH}/docs/shared_setup_steps.md for the next steps.\033[0m"
